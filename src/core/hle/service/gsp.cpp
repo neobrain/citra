@@ -115,21 +115,17 @@ void ReadHWRegs(Service::Interface* self) {
 }
 
 void SetBufferSwap(u32 screen_id, const FrameBufferInfo& info) {
-    using FrameBufferRegs = GPU::Regs::Struct<GPU::Regs::FramebufferTop>;
-
-    u32 base_address = 0x400000 + 4 * ((screen_id == 0) ? GPU::Regs::FramebufferTop : GPU::Regs::FramebufferBottom);
-#define FRAMEBUFFER_REG_INDEX(name) (base_address + offsetof(FrameBufferRegs, name))
+    u32 base_address = 0x400000;
     if (info.active_fb == 0) {
-        WriteHWRegs(FRAMEBUFFER_REG_INDEX(address_left1), 4, &info.address_left);
-        WriteHWRegs(FRAMEBUFFER_REG_INDEX(address_right1), 4, &info.address_right);
+        WriteHWRegs(base_address + 4 * GPU_REG_INDEX(framebuffer_config[screen_id].address_left1), 4, &info.address_left);
+        WriteHWRegs(base_address + 4 * GPU_REG_INDEX(framebuffer_config[screen_id].address_right1), 4, &info.address_right);
     } else {
-        WriteHWRegs(FRAMEBUFFER_REG_INDEX(address_left2), 4, &info.address_left);
-        WriteHWRegs(FRAMEBUFFER_REG_INDEX(address_right2), 4, &info.address_right);
+        WriteHWRegs(base_address + 4 * GPU_REG_INDEX(framebuffer_config[screen_id].address_left2), 4, &info.address_left);
+        WriteHWRegs(base_address + 4 * GPU_REG_INDEX(framebuffer_config[screen_id].address_right2), 4, &info.address_right);
     }
-    WriteHWRegs(FRAMEBUFFER_REG_INDEX(stride), 4, &info.stride);
-    WriteHWRegs(FRAMEBUFFER_REG_INDEX(color_format), 4, &info.format);
-    WriteHWRegs(FRAMEBUFFER_REG_INDEX(active_fb), 4, &info.shown_fb);
-#undef FRAMEBUFFER_REG_INDEX
+    WriteHWRegs(base_address + 4 * GPU_REG_INDEX(framebuffer_config[screen_id].stride), 4, &info.stride);
+    WriteHWRegs(base_address + 4 * GPU_REG_INDEX(framebuffer_config[screen_id].color_format), 4, &info.format);
+    WriteHWRegs(base_address + 4 * GPU_REG_INDEX(framebuffer_config[screen_id].active_fb), 4, &info.shown_fb);
 }
 
 /**
@@ -336,7 +332,7 @@ const Interface::FunctionInfo FunctionTable[] = {
     {0x00020084, nullptr,                       "WriteHWRegsWithMask"},
     {0x00030082, nullptr,                       "WriteHWRegRepeat"},
     {0x00040080, ReadHWRegs,                    "ReadHWRegs"},
-    {0x00050200, nullptr,                       "SetBufferSwap"},
+    {0x00050200, SetBufferSwap,                 "SetBufferSwap"},
     {0x00060082, nullptr,                       "SetCommandList"},
     {0x000700C2, nullptr,                       "RequestDma"},
     {0x00080082, nullptr,                       "FlushDataCache"},
