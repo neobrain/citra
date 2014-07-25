@@ -36,6 +36,15 @@ static inline u8* GetCommandBuffer(u32 thread_id) {
         0x800 + (thread_id * sizeof(CommandBuffer)));
 }
 
+static inline FrameBufferUpdate* GetFrameBufferInfo(u32 thread_id, u32 screen_index) {
+    if (0 == g_shared_memory)
+        return nullptr;
+
+    u32 base_offset = (screen_index == 0) ? 0x200 : 0x240;
+    u32 offset = base_offset + thread_id * 0x80;
+    return (FrameBufferUpdate*)Kernel::GetSharedMemoryPointer(g_shared_memory, offset);
+}
+
 /// Gets a pointer to the interrupt relay queue for a given thread index
 static inline InterruptRelayQueue* GetInterruptRelayQueue(u32 thread_id) {
     return (InterruptRelayQueue*)Kernel::GetSharedMemoryPointer(g_shared_memory,
@@ -105,6 +114,40 @@ void ReadHWRegs(Service::Interface* self) {
     }
 }
 
+void SetBufferSwap(u32 screen_id, const FrameBufferInfo& info) {
+    using FrameBufferRegs = GPU::Regs::Struct<GPU::Regs::FramebufferTop>;
+
+    u32 base_address = 0x400000 + 4 * ((screen_id == 0) ? GPU::Regs::FramebufferTop : GPU::Regs::FramebufferBottom);
+#define FRAMEBUFFER_REG_INDEX(name) (base_address + offsetof(FrameBufferRegs, name))
+    if (info.active_fb == 0) {
+        WriteHWRegs(FRAMEBUFFER_REG_INDEX(address_left1), 4, &info.address_left);
+        WriteHWRegs(FRAMEBUFFER_REG_INDEX(address_right1), 4, &info.address_right);
+    } else {
+        WriteHWRegs(FRAMEBUFFER_REG_INDEX(address_left2), 4, &info.address_left);
+        WriteHWRegs(FRAMEBUFFER_REG_INDEX(address_right2), 4, &info.address_right);
+    }
+    WriteHWRegs(FRAMEBUFFER_REG_INDEX(stride), 4, &info.stride);
+    WriteHWRegs(FRAMEBUFFER_REG_INDEX(color_format), 4, &info.format);
+    WriteHWRegs(FRAMEBUFFER_REG_INDEX(active_fb), 4, &info.shown_fb);
+#undef FRAMEBUFFER_REG_INDEX
+}
+
+/**
+ * GSP_GPU::SetBufferSwap service function
+ *  Inputs:
+ *      1 :
+ *      2-7 :
+ *  Outputs:
+ *      0 :
+ *      2 :
+ */
+void SetBufferSwap(Service::Interface* self) {
+    u32* cmd_buff = Service::GetCommandBuffer();
+    u32 screen_id = cmd_buff[1];
+    FrameBufferInfo* fb_info = (FrameBufferInfo*)&cmd_buff[2];
+    SetBufferSwap(screen_id, *fb_info);
+}
+
 /**
  * GSP_GPU::RegisterInterruptRelayQueue service function
  *  Inputs:
@@ -132,6 +175,7 @@ void RegisterInterruptRelayQueue(Service::Interface* self) {
 /**
  * Signals that the specified interrupt type has occurred to userland code
  * @param interrupt_id ID of interrupt that is being signalled
+ * @todo This should probably take a thread_id parameter and only signal this thread?
  */
 void SignalInterrupt(InterruptId interrupt_id) {
     if (0 == g_interrupt_event) {
@@ -157,7 +201,7 @@ void SignalInterrupt(InterruptId interrupt_id) {
 }
 
 /// Executes the next GSP command
-void ExecuteCommand(const Command& command) {
+void ExecuteCommand(const Command& command, u32 thread_id) {
     // Utility function to convert register ID to address
     auto WriteGPURegister = [](u32 id, u32 data) {
         GPU::Write<u32>(0x1EF00000 + 4 * id, data);
@@ -228,6 +272,15 @@ void ExecuteCommand(const Command& command) {
         SignalInterrupt(InterruptId::PPF);
         SignalInterrupt(InterruptId::P3D);
         SignalInterrupt(InterruptId::DMA);
+
+        // Update framebuffer information if requested
+        for (int screen_id = 0; screen_id < 2; ++screen_id) {
+            FrameBufferUpdate* info = GetFrameBufferInfo(thread_id, screen_id);
+            if (info->is_dirty)
+                SetBufferSwap(screen_id, info->framebuffer_info[info->index]);
+
+            info->is_dirty = false;
+        }
         break;
     }
 
@@ -270,7 +323,7 @@ void TriggerCmdReqQueue(Service::Interface* self) {
             g_debugger.GXCommandProcessed((u8*)&command_buffer->commands[i]);
 
             // Decode and execute command
-            ExecuteCommand(command_buffer->commands[i]);
+            ExecuteCommand(command_buffer->commands[i], thread_id);
 
             // Indicates that command has completed
             command_buffer->number_commands = command_buffer->number_commands - 1;
