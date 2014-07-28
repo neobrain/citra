@@ -75,6 +75,12 @@ inline void Write(u32 addr, const T data) {
         break;
     }
 
+    case GPU_REG_INDEX(framebuffer_config[0].active_fb):
+        // TODO: This is mostly a hack...
+        VideoCore::g_renderer->SwapBuffers();
+        Kernel::WaitCurrentThread(WAITTYPE_VBLANK);
+        break;
+
     case GPU_REG_INDEX(display_transfer_config.trigger):
     {
         const auto& config = g_regs.display_transfer_config;
