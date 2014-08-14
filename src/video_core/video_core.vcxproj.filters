@@ -9,6 +9,9 @@
     <ClCompile Include="renderer_opengl\renderer_opengl.cpp">
       <Filter>renderer_opengl</Filter>
     </ClCompile>
+    <ClCompile Include="debug_utils\debug_utils.cpp">
+      <Filter>debug_utils</Filter>
+    </ClCompile>
     <ClCompile Include="clipper.cpp" />
     <ClCompile Include="command_processor.cpp" />
     <ClCompile Include="primitive_assembly.cpp" />
@@ -18,8 +21,8 @@
     <ClCompile Include="video_core.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="renderer_opengl\renderer_opengl.h">
-      <Filter>renderer_opengl</Filter>
+    <ClInclude Include="debug_utils\debug_utils.h">
+      <Filter>debug_utils</Filter>
     </ClInclude>
     <ClInclude Include="clipper.h" />
     <ClInclude Include="command_processor.h" />
