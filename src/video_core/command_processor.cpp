@@ -28,6 +28,8 @@ static inline void WritePicaReg(u32 id, u32 value) {
     u32 old_value = registers[id];
     registers[id] = value;
 
+    DebugUtils::OnPicaRegWrite(id, value);
+
     switch(id) {
         // It seems like these trigger vertex rendering
         case PICA_REG_INDEX(trigger_draw):
