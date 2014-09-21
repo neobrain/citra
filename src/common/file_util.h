@@ -65,9 +65,6 @@ bool IsDirectory(const std::string &filename);
 // Returns the size of filename (64bit)
 u64 GetSize(const std::string &filename);
 
-// Overloaded GetSize, accepts file descriptor
-u64 GetSize(const int fd);
-
 // Overloaded GetSize, accepts FILE*
 u64 GetSize(FILE *f);
 
@@ -78,11 +75,7 @@ bool CreateDir(const std::string &filename);
 bool CreateFullPath(const std::string &fullPath);
 
 // Deletes a given filename, return true on success
-// Doesn't supports deleting a directory
 bool Delete(const std::string &filename);
-
-// Deletes a directory filename, returns true on success
-bool DeleteDir(const std::string &filename);
 
 // renames file srcFilename to destFilename, returns true on success 
 bool Rename(const std::string &srcFilename, const std::string &destFilename);

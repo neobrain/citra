@@ -17,6 +17,7 @@ endif()
 add_executable(citra ${SRCS} ${HEADERS})
 target_link_libraries(citra core common video_core)
 target_link_libraries(citra ${OPENGL_gl_LIBRARY} ${GLFW_LIBRARIES})
+target_link_libraries(citra ${Boost_LIBRARIES})
 
 if (APPLE)
     target_link_libraries(citra iconv pthread ${COREFOUNDATION_LIBRARY})

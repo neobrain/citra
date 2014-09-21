@@ -2,10 +2,13 @@
 // Licensed under GPLv2
 // Refer to the license.txt file included.
 
+#define BOOST_NO_SCOPED_ENUMS
+#define BOOST_NO_CXX11_SCOPED_ENUMS
+#include <boost/filesystem.hpp>
 
-#include "common/common.h"
-#include "common/file_util.h"
+#include <algorithm>
 
+// TODO: Most of these includes should not be necessary anymore
 #ifdef _WIN32
 #include <windows.h>
 #include <shlobj.h>        // for SHGetFolderPath
@@ -13,9 +16,6 @@
 #include <commdlg.h>    // for GetSaveFileName
 #include <io.h>
 #include <direct.h>        // getcwd
-#else
-#include <sys/param.h>
-#include <dirent.h>
 #endif
 
 #if defined(__APPLE__)
@@ -24,21 +24,9 @@
 #include <CoreFoundation/CFBundle.h>
 #endif
 
-#include <algorithm>
-#include <sys/stat.h>
+#include "common/common.h"
+#include "common/file_util.h"
 
-#ifndef S_ISDIR
-#define S_ISDIR(m)  (((m)&S_IFMT) == S_IFDIR)
-#endif
-
-#ifdef BSD4_4
-#define stat64 stat
-#define fstat64 fstat
-#endif
-
-// This namespace has various generic functions related to files and paths.
-// The code still needs a ton of cleanup.
-// REMEMBER: strdup considered harmful!
 namespace FileUtil
 {
 
@@ -58,56 +46,21 @@ static void StripTailDirSlashes(std::string &fname)
 // Returns true if file filename exists
 bool Exists(const std::string &filename)
 {
-    struct stat64 file_info;
-
-    std::string copy(filename);
-    StripTailDirSlashes(copy);
-
-#ifdef _WIN32
-    int result = _tstat64(Common::UTF8ToTStr(copy).c_str(), &file_info);
-#else
-    int result = stat64(copy.c_str(), &file_info);
-#endif
-
-    return (result == 0);
+    boost::system::error_code error;
+    return boost::filesystem::exists(filename, error) && !error;
 }
 
 // Returns true if filename is a directory
 bool IsDirectory(const std::string &filename)
 {
-    struct stat64 file_info;
-
-    std::string copy(filename);
-    StripTailDirSlashes(copy);
-
-#ifdef _WIN32
-    int result = _tstat64(Common::UTF8ToTStr(copy).c_str(), &file_info);
-#else
-    int result = stat64(copy.c_str(), &file_info);
-#endif
-
-    if (result < 0) {
-        WARN_LOG(COMMON, "IsDirectory: stat failed on %s: %s", 
-                 filename.c_str(), GetLastErrorMsg());
-        return false;
-    }
-
-    return S_ISDIR(file_info.st_mode);
+    boost::system::error_code error;
+    return boost::filesystem::is_directory(filename/*, error*/) && !error;
 }
 
 // Deletes a given filename, return true on success
-// Doesn't supports deleting a directory
 bool Delete(const std::string &filename)
 {
     INFO_LOG(COMMON, "Delete: file %s", filename.c_str());
-
-    // Return true because we care about the file no 
-    // being there, not the actual delete.
-    if (!Exists(filename))
-    {
-        WARN_LOG(COMMON, "Delete: %s does not exist", filename.c_str());
-        return true;
-    }
 
     // We can't delete a directory
     if (IsDirectory(filename))
@@ -116,20 +69,13 @@ bool Delete(const std::string &filename)
         return false;
     }
 
-#ifdef _WIN32
-    if (!DeleteFile(Common::UTF8ToTStr(filename).c_str()))
-    {
-        WARN_LOG(COMMON, "Delete: DeleteFile failed on %s: %s", 
-                 filename.c_str(), GetLastErrorMsg());
+    boost::system::error_code error;
+    boost::filesystem::remove(filename, error);
+    if (error) {
+        ERROR_LOG(COMMON, "remove failed on %s: %s",
+                 filename.c_str(), error.message().c_str());
         return false;
     }
-#else
-    if (unlink(filename.c_str()) == -1) {
-        WARN_LOG(COMMON, "Delete: unlink failed on %s: %s", 
-                 filename.c_str(), GetLastErrorMsg());
-        return false;
-    }
-#endif
 
     return true;
 }
@@ -138,228 +84,90 @@ bool Delete(const std::string &filename)
 bool CreateDir(const std::string &path)
 {
     INFO_LOG(COMMON, "CreateDir: directory %s", path.c_str());
-#ifdef _WIN32
-    if (::CreateDirectory(Common::UTF8ToTStr(path).c_str(), NULL))
-        return true;
-    DWORD error = GetLastError();
-    if (error == ERROR_ALREADY_EXISTS)
-    {
-        WARN_LOG(COMMON, "CreateDir: CreateDirectory failed on %s: already exists", path.c_str());
-        return true;
-    }
-    ERROR_LOG(COMMON, "CreateDir: CreateDirectory failed on %s: %i", path.c_str(), error);
-    return false;
-#else
-    if (mkdir(path.c_str(), 0755) == 0)
-        return true;
 
-    int err = errno;
-
-    if (err == EEXIST)
-    {
-        WARN_LOG(COMMON, "CreateDir: mkdir failed on %s: already exists", path.c_str());
+    if (IsDirectory(path)) {
+        // Job is already done
         return true;
     }
 
-    ERROR_LOG(COMMON, "CreateDir: mkdir failed on %s: %s", path.c_str(), strerror(err));
-    return false;
-#endif
+    boost::system::error_code error;
+    if (!boost::filesystem::create_directory(path, error) || error) {
+        ERROR_LOG(COMMON, "create_directory failed on %s: %i", path.c_str(), error.message().c_str());
+        return false;
+    }
+    return true;
 }
 
 // Creates the full path of fullPath returns true on success
 bool CreateFullPath(const std::string &fullPath)
 {
-    int panicCounter = 100;
     INFO_LOG(COMMON, "CreateFullPath: path %s", fullPath.c_str());
 
-    if (FileUtil::Exists(fullPath))
-    {
-        INFO_LOG(COMMON, "CreateFullPath: path exists %s", fullPath.c_str());
+    if (IsDirectory(fullPath)) {
+        // Job is already done
         return true;
     }
 
-    size_t position = 0;
-    while (true)
-    {
-        // Find next sub path
-        position = fullPath.find(DIR_SEP_CHR, position);
+    boost::system::error_code error;
+    if (!boost::filesystem::create_directories(fullPath, error) || error) {
+        ERROR_LOG(COMMON, "create_directories failed on %s: %i",
+                  fullPath.c_str(), error.message().c_str());
+        return false;
+    }
+    return true;
+}
 
-        // we're done, yay!
-        if (position == fullPath.npos)
-            return true;
+// renames file srcFilename to destFilename, returns true on success
+bool Rename(const std::string& srcFilename, const std::string& destFilename)
+{
+    INFO_LOG(COMMON, "Rename: %s --> %s",
+            srcFilename.c_str(), destFilename.c_str());
 
-        // Include the '/' so the first call is CreateDir("/") rather than CreateDir("")
-        std::string const subPath(fullPath.substr(0, position + 1));
-        if (!FileUtil::IsDirectory(subPath))
-            FileUtil::CreateDir(subPath);
+    boost::system::error_code error;
+    boost::filesystem::rename(srcFilename, destFilename, error);
 
-        // A safety check
-        panicCounter--;
-        if (panicCounter <= 0)
-        {
-            ERROR_LOG(COMMON, "CreateFullPath: directory structure is too deep");
+    if (error) {
+        ERROR_LOG(COMMON, "Rename: failed %s --> %s: %s",
+                  srcFilename.c_str(), destFilename.c_str(), error.message().c_str());
+        return false;
+    }
+    return true;
+}
+
+// copies file srcFilename to destFilename, returns true on success
+bool Copy(const std::string& srcFilename, const std::string& destFilename)
+{
+    INFO_LOG(COMMON, "Copy: %s --> %s",
+            srcFilename.c_str(), destFilename.c_str());
+
+    boost::system::error_code error;
+    boost::filesystem::copy(srcFilename, destFilename, error);
+
+    if (error) {
+        boost::filesystem::copy_file(srcFilename, destFilename,
+                                     boost::filesystem::copy_option::overwrite_if_exists, error);
+        if (error) {
+            ERROR_LOG(COMMON, "Copy: failed %s --> %s: %s",
+                srcFilename.c_str(), destFilename.c_str(), error.message().c_str());
             return false;
         }
-        position++;
     }
-}
-
-
-// Deletes a directory filename, returns true on success
-bool DeleteDir(const std::string &filename)
-{
-    INFO_LOG(COMMON, "DeleteDir: directory %s", filename.c_str());
-
-    // check if a directory
-    if (!FileUtil::IsDirectory(filename))
-    {
-        ERROR_LOG(COMMON, "DeleteDir: Not a directory %s", filename.c_str());
-        return false;
-    }
-
-#ifdef _WIN32
-    if (::RemoveDirectory(Common::UTF8ToTStr(filename).c_str()))
-        return true;
-#else
-    if (rmdir(filename.c_str()) == 0)
-        return true;
-#endif
-    ERROR_LOG(COMMON, "DeleteDir: %s: %s", filename.c_str(), GetLastErrorMsg());
-
-    return false;
-}
-
-// renames file srcFilename to destFilename, returns true on success 
-bool Rename(const std::string &srcFilename, const std::string &destFilename)
-{
-    INFO_LOG(COMMON, "Rename: %s --> %s", 
-            srcFilename.c_str(), destFilename.c_str());
-    if (rename(srcFilename.c_str(), destFilename.c_str()) == 0)
-        return true;
-    ERROR_LOG(COMMON, "Rename: failed %s --> %s: %s", 
-              srcFilename.c_str(), destFilename.c_str(), GetLastErrorMsg());
-    return false;
-}
-
-// copies file srcFilename to destFilename, returns true on success 
-bool Copy(const std::string &srcFilename, const std::string &destFilename)
-{
-    INFO_LOG(COMMON, "Copy: %s --> %s", 
-            srcFilename.c_str(), destFilename.c_str());
-#ifdef _WIN32
-    if (CopyFile(Common::UTF8ToTStr(srcFilename).c_str(), Common::UTF8ToTStr(destFilename).c_str(), FALSE))
-        return true;
-
-    ERROR_LOG(COMMON, "Copy: failed %s --> %s: %s", 
-            srcFilename.c_str(), destFilename.c_str(), GetLastErrorMsg());
-    return false;
-#else
-
-    // buffer size
-#define BSIZE 1024
-
-    char buffer[BSIZE];
-
-    // Open input file
-    FILE *input = fopen(srcFilename.c_str(), "rb");
-    if (!input)
-    {
-        ERROR_LOG(COMMON, "Copy: input failed %s --> %s: %s", 
-                srcFilename.c_str(), destFilename.c_str(), GetLastErrorMsg());
-        return false;
-    }
-
-    // open output file
-    FILE *output = fopen(destFilename.c_str(), "wb");
-    if (!output)
-    {
-        fclose(input);
-        ERROR_LOG(COMMON, "Copy: output failed %s --> %s: %s", 
-                srcFilename.c_str(), destFilename.c_str(), GetLastErrorMsg());
-        return false;
-    }
-
-    // copy loop
-    while (!feof(input))
-    {
-        // read input
-        int rnum = fread(buffer, sizeof(char), BSIZE, input);
-        if (rnum != BSIZE)
-        {
-            if (ferror(input) != 0)
-            {
-                ERROR_LOG(COMMON, 
-                        "Copy: failed reading from source, %s --> %s: %s", 
-                        srcFilename.c_str(), destFilename.c_str(), GetLastErrorMsg());
-                goto bail;
-            }
-        }
-
-        // write output
-        int wnum = fwrite(buffer, sizeof(char), rnum, output);
-        if (wnum != rnum)
-        {
-            ERROR_LOG(COMMON, 
-                    "Copy: failed writing to output, %s --> %s: %s", 
-                    srcFilename.c_str(), destFilename.c_str(), GetLastErrorMsg());
-            goto bail;
-        }
-    }
-    // close files
-    fclose(input);
-    fclose(output);
     return true;
-bail:
-    if (input)
-        fclose(input);
-    if (output)
-        fclose(output);
-    return false;
-#endif
 }
 
 // Returns the size of filename (64bit)
-u64 GetSize(const std::string &filename)
+u64 GetSize(const std::string& filename)
 {
-    if (!Exists(filename))
-    {
-        WARN_LOG(COMMON, "GetSize: failed %s: No such file", filename.c_str());
+    boost::system::error_code error;
+    u64 ret = boost::filesystem::file_size(filename, error);
+
+    if (error) {
+        ERROR_LOG(COMMON, "file_size failed %s: %s",
+                filename.c_str(), error.message().c_str());
         return 0;
     }
 
-    if (IsDirectory(filename))
-    {
-        WARN_LOG(COMMON, "GetSize: failed %s: is a directory", filename.c_str());
-        return 0;
-    }
-    
-    struct stat64 buf;
-#ifdef _WIN32
-    if (_tstat64(Common::UTF8ToTStr(filename).c_str(), &buf) == 0)
-#else
-    if (stat64(filename.c_str(), &buf) == 0)
-#endif
-    {
-        DEBUG_LOG(COMMON, "GetSize: %s: %lld",
-                filename.c_str(), (long long)buf.st_size);
-        return buf.st_size;
-    }
-
-    ERROR_LOG(COMMON, "GetSize: Stat failed %s: %s",
-            filename.c_str(), GetLastErrorMsg());
-    return 0;
-}
-
-// Overloaded GetSize, accepts file descriptor
-u64 GetSize(const int fd)
-{
-    struct stat64 buf;
-    if (fstat64(fd, &buf) != 0) {
-        ERROR_LOG(COMMON, "GetSize: stat failed %i: %s",
-            fd, GetLastErrorMsg());
-        return 0;
-    }
-    return buf.st_size;
+    return ret;
 }
 
 // Overloaded GetSize, accepts FILE*
@@ -402,196 +210,105 @@ bool CreateEmptyFile(const std::string &filename)
 u32 ScanDirectoryTree(const std::string &directory, FSTEntry& parentEntry)
 {
     INFO_LOG(COMMON, "ScanDirectoryTree: directory %s", directory.c_str());
-    // How many files + directories we found
-    u32 foundEntries = 0;
-#ifdef _WIN32
-    // Find the first file in the directory.
-    WIN32_FIND_DATA ffd;
 
-    HANDLE hFind = FindFirstFile(Common::UTF8ToTStr(directory + "\\*").c_str(), &ffd);
-    if (hFind == INVALID_HANDLE_VALUE)
-    {
-        FindClose(hFind);
-        return foundEntries;
-    }
-    // windows loop
-    do
-    {
-        FSTEntry entry;
-        const std::string virtualName(Common::TStrToUTF8(ffd.cFileName));
-#else
-    struct dirent dirent, *result = NULL;
-
-    DIR *dirp = opendir(directory.c_str());
-    if (!dirp)
+    if (!IsDirectory(directory))
         return 0;
 
-    // non windows loop
-    while (!readdir_r(dirp, &dirent, &result) && result)
-    {
-        FSTEntry entry;
-        const std::string virtualName(result->d_name);
-#endif
-        // check for "." and ".."
-        if (((virtualName[0] == '.') && (virtualName[1] == '\0')) ||
-                ((virtualName[0] == '.') && (virtualName[1] == '.') && 
-                 (virtualName[2] == '\0')))
-            continue;
-        entry.virtualName = virtualName;
-        entry.physicalName = directory;
-        entry.physicalName += DIR_SEP + entry.virtualName;
+    boost::system::error_code error;
+    boost::filesystem::directory_iterator it(directory, error);
+    boost::filesystem::directory_iterator end;
 
-        if (IsDirectory(entry.physicalName.c_str()))
-        {
+    // Iterate over all children and recurse on directories
+    u32 foundEntries = 0;
+    for (; it != end; ++it) {
+        parentEntry.children.resize(1 + parentEntry.children.size());
+        FSTEntry& entry = parentEntry.children.back();
+
+        std::string filename = it->path().string();
+        entry.virtualName = entry.physicalName = filename;
+        if (IsDirectory(filename)) {
             entry.isDirectory = true;
-            // is a directory, lets go inside
-            entry.size = ScanDirectoryTree(entry.physicalName, entry);
+            entry.size = ScanDirectoryTree(filename, entry);
             foundEntries += (u32)entry.size;
-        }
-        else
-        { // is a file 
+        } else {
             entry.isDirectory = false;
-            entry.size = GetSize(entry.physicalName.c_str());
+            entry.size = GetSize(filename);
         }
+
         ++foundEntries;
-        // Push into the tree
-        parentEntry.children.push_back(entry);        
-#ifdef _WIN32 
-    } while (FindNextFile(hFind, &ffd) != 0);
-    FindClose(hFind);
-#else
     }
-    closedir(dirp);
-#endif
-    // Return number of entries found.
     return foundEntries;
 }
 
 
 // Deletes the given directory and anything under it. Returns true on success.
+// TODO: Rename to DeleteRecursively
 bool DeleteDirRecursively(const std::string &directory)
 {
     INFO_LOG(COMMON, "DeleteDirRecursively: %s", directory.c_str());
-#ifdef _WIN32
-    // Find the first file in the directory.
-    WIN32_FIND_DATA ffd;
-    HANDLE hFind = FindFirstFile(Common::UTF8ToTStr(directory + "\\*").c_str(), &ffd);
 
-    if (hFind == INVALID_HANDLE_VALUE)
-    {
-        FindClose(hFind);
-        return false;
+    if (!Exists(directory)) {
+        // Return success because we only care about the directory not existing afterwards.
+        return true;
     }
 
-    // windows loop
-    do
-    {
-        const std::string virtualName(Common::TStrToUTF8(ffd.cFileName));
-#else
-    struct dirent dirent, *result = NULL;
-    DIR *dirp = opendir(directory.c_str());
-    if (!dirp)
+    boost::system::error_code error;
+    boost::filesystem::remove_all(directory, error);
+
+    if (error) {
+        ERROR_LOG(COMMON, "remove_all failed on %s: %s",
+                 directory.c_str(), error.message().c_str());
         return false;
-
-    // non windows loop
-    while (!readdir_r(dirp, &dirent, &result) && result)
-    {
-        const std::string virtualName = result->d_name;
-#endif
-
-        // check for "." and ".."
-        if (((virtualName[0] == '.') && (virtualName[1] == '\0')) ||
-            ((virtualName[0] == '.') && (virtualName[1] == '.') && 
-             (virtualName[2] == '\0')))
-            continue;
-
-        std::string newPath = directory + DIR_SEP_CHR + virtualName;
-        if (IsDirectory(newPath))
-        {
-            if (!DeleteDirRecursively(newPath))
-            {
-                #ifndef _WIN32
-                closedir(dirp);
-                #endif
-
-                return false;
-            }
-        }
-        else
-        {
-            if (!FileUtil::Delete(newPath))
-            {
-                #ifndef _WIN32
-                closedir(dirp);
-                #endif
-
-                return false;
-            }
-        }
-
-#ifdef _WIN32
-    } while (FindNextFile(hFind, &ffd) != 0);
-    FindClose(hFind);
-#else
     }
-    closedir(dirp);
-#endif
-    FileUtil::DeleteDir(directory);
-        
     return true;
 }
 
 // Create directory and copy contents (does not overwrite existing files)
+// TODO: Rename to CopyRecursively
+// TODO: Perform actual error checking here...
 void CopyDir(const std::string &source_path, const std::string &dest_path)
 {
-#ifndef _WIN32
-    if (source_path == dest_path) return;
-    if (!FileUtil::Exists(source_path)) return;
-    if (!FileUtil::Exists(dest_path)) FileUtil::CreateFullPath(dest_path);
-
-    struct dirent dirent, *result = NULL;
-    DIR *dirp = opendir(source_path.c_str());
-    if (!dirp) return;
-
-    while (!readdir_r(dirp, &dirent, &result) && result)
-    {
-        const std::string virtualName(result->d_name);
-        // check for "." and ".."
-        if (((virtualName[0] == '.') && (virtualName[1] == '\0')) ||
-            ((virtualName[0] == '.') && (virtualName[1] == '.') &&
-            (virtualName[2] == '\0')))
-            continue;
-
-        std::string source, dest;
-        source = source_path + virtualName;
-        dest = dest_path + virtualName;
-        if (IsDirectory(source))
-        {
-            source += '/';
-            dest += '/';
-            if (!FileUtil::Exists(dest)) FileUtil::CreateFullPath(dest);
-            CopyDir(source, dest);
+    boost::system::error_code error;
+    try {
+        if (Exists(dest_path) && !IsDirectory(dest_path)) {
+            // TODO: Error out
+            ERROR_LOG(GPU, "Dest exists, but not a directory");
+            return;
         }
-        else if (!FileUtil::Exists(dest)) FileUtil::Copy(source, dest);
+
+        boost::filesystem::copy(source_path, dest_path, error);
+
+        if (!IsDirectory(source_path)) {
+            // Already done
+            return;
+        }
+
+        boost::filesystem::directory_iterator it(source_path);
+        boost::filesystem::directory_iterator end;
+
+        for (; it != end; ++it) {
+            std::string source = (it->path()).string();
+            std::string dest   = (dest_path / it->path().filename()).string();
+            if (IsDirectory(source)) {
+                CopyDir(source, dest);
+            } else {
+                boost::filesystem::copy(source, dest, error);
+            }
+        }
+    } catch (...) {
     }
-    closedir(dirp);
-#endif
 }
 
 // Returns the current directory
 std::string GetCurrentDir()
 {
-    char *dir;
-    // Get the current working directory (getcwd uses malloc) 
-    if (!(dir = __getcwd(NULL, 0))) {
-
-        ERROR_LOG(COMMON, "GetCurrentDirectory failed: %s",
-                GetLastErrorMsg());
-        return NULL;
+    boost::system::error_code error;
+    auto ret = boost::filesystem::current_path(error);
+    if (error) {
+        ERROR_LOG(COMMON, "GetCurrentDir failed: %s", error.message().c_str());
+        return {};
     }
-    std::string strDir = dir;
-    free(dir);
-    return strDir;
+    return ret.string();
 }
 
 // Sets the current directory to the given directory
