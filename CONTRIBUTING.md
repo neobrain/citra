@@ -318,3 +318,4 @@ private:
     } some_field;
 * Do not use `using namespace [x];` or `using [x::y];` in headers. Try not to use it at all if you can.
   * C++11's `using new_name = some_type;` syntax is a different thing, and is fine to use in Citra.
+* When using struct or class objects from const methods, always return a const-object (even if the return type is a newly constructed, non-reference stack-object). This avoid erroneous usage when one calls these functions expecting them to return references, e.g. TODO example.
