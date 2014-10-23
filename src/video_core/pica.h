@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <initializer_list>
 #include <map>
+#include <vector>
 
 #include "common/bit_field.h"
 #include "common/common_types.h"
@@ -109,7 +110,7 @@ struct Regs {
 
         u32 address;
 
-        u32 GetPhysicalAddress() {
+        u32 GetPhysicalAddress() const {
             return DecodeAddressRegister(address) - Memory::FCRAM_PADDR + Memory::HEAP_GSP_VADDR;
         }
 
@@ -130,12 +131,34 @@ struct Regs {
         // Seems like they are luminance formats and compressed textures.
     };
 
-    BitField<0, 1, u32> texturing_enable;
+    union {
+        BitField< 0, 1, u32> texturing_enable; // TODO: Actually texture0_enable..
+        BitField< 1, 1, u32> texture1_enable;
+        BitField< 2, 1, u32> texture2_enable;
+    };
     TextureConfig texture0;
     INSERT_PADDING_WORDS(0x8);
     BitField<0, 4, TextureFormat> texture0_format;
+    INSERT_PADDING_WORDS(0x2);
+    TextureConfig texture1; // 0x91
+    BitField<0, 4, TextureFormat> texture1_format; // 0x96
+    INSERT_PADDING_WORDS(0x2);
+    TextureConfig texture2; // 0x99
+    BitField<0, 4, TextureFormat> texture2_format; // 0x9e
+    INSERT_PADDING_WORDS(0x21);
 
-    INSERT_PADDING_WORDS(0x31);
+    struct FullTextureConfig {
+        const bool enabled;
+        const TextureConfig config;
+        const TextureFormat format;
+    };
+    const std::vector<FullTextureConfig> GetTextures() const {
+        return {
+                   { texturing_enable, texture0, texture0_format },
+                   { texture1_enable, texture1, texture1_format },
+                   { texture2_enable, texture2, texture2_format }
+               };
+    }
 
     // 0xc0-0xff: Texture Combiner (akin to glTexEnv)
     struct TevStageConfig {
@@ -537,6 +560,10 @@ struct Regs {
         ADD_FIELD(texturing_enable);
         ADD_FIELD(texture0);
         ADD_FIELD(texture0_format);
+        ADD_FIELD(texture1);
+        ADD_FIELD(texture1_format);
+        ADD_FIELD(texture2);
+        ADD_FIELD(texture2_format);
         ADD_FIELD(tev_stage0);
         ADD_FIELD(tev_stage1);
         ADD_FIELD(tev_stage2);
@@ -603,6 +630,10 @@ ASSERT_REG_POSITION(viewport_corner, 0x68);
 ASSERT_REG_POSITION(texturing_enable, 0x80);
 ASSERT_REG_POSITION(texture0, 0x81);
 ASSERT_REG_POSITION(texture0_format, 0x8e);
+ASSERT_REG_POSITION(texture1, 0x91);
+ASSERT_REG_POSITION(texture1_format, 0x96);
+ASSERT_REG_POSITION(texture2, 0x99);
+ASSERT_REG_POSITION(texture2_format, 0x9e);
 ASSERT_REG_POSITION(tev_stage0, 0xc0);
 ASSERT_REG_POSITION(tev_stage1, 0xc8);
 ASSERT_REG_POSITION(tev_stage2, 0xd0);
