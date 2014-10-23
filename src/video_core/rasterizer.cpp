@@ -306,6 +306,11 @@ void ProcessTriangle(const VertexShader::OutputVertex& v0,
                     {
                     case ColorModifier::SourceColor:
                         return values;
+
+                    case ColorModifier::SourceAlpha:
+                        // TODO: Ugh, I messed up here. Need to fix parameters and stuff..
+                        return values;
+
                     default:
                         ERROR_LOG(GPU, "Unknown color factor %d\n", (int)factor);
                         return {};
@@ -316,8 +321,12 @@ void ProcessTriangle(const VertexShader::OutputVertex& v0,
                     switch (factor) {
                     case AlphaModifier::SourceAlpha:
                         return value;
+
+					case AlphaModifier::OneMinusSourceAlpha:
+						return 255 - value;
+
                     default:
-                        ERROR_LOG(GPU, "Unknown color factor %d\n", (int)factor);
+                        ERROR_LOG(GPU, "Unknown alpha factor %d\n", (int)factor);
                         return 0;
                     }
                 };
@@ -329,6 +338,12 @@ void ProcessTriangle(const VertexShader::OutputVertex& v0,
 
                     case Operation::Modulate:
                         return ((input[0] * input[1]) / 255).Cast<u8>();
+
+                    case Operation::Add:
+                        return (input[0] + input[1]).Cast<u8>();
+
+                    case Operation::Lerp:
+                        return ((input[0] * input[2] + input[1] * (Math::MakeVec<u8>(255, 255, 255) - input[2]).Cast<u8>()) / 255).Cast<u8>();
 
                     default:
                         ERROR_LOG(GPU, "Unknown color combiner operation %d\n", (int)op);
@@ -343,6 +358,12 @@ void ProcessTriangle(const VertexShader::OutputVertex& v0,
 
                     case Operation::Modulate:
                         return input[0] * input[1] / 255;
+
+                    case Operation::Add:
+                        return input[0] + input[1];
+
+                    case Operation::Lerp:
+                        return (input[0] * input[2] + input[1] * (255 - input[2])) / 255;
 
                     default:
                         ERROR_LOG(GPU, "Unknown alpha combiner operation %d\n", (int)op);
