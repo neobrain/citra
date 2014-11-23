@@ -110,7 +110,7 @@ struct Regs {
         u32 address;
 
         u32 GetPhysicalAddress() const {
-            return DecodeAddressRegister(address) - Memory::FCRAM_PADDR + Memory::HEAP_GSP_VADDR;
+            return DecodeAddressRegister(address) - Memory::FCRAM_PADDR + Memory::HEAP_LINEAR_VADDR;
         }
 
         // texture1 and texture2 store the texture format directly after the address
@@ -306,7 +306,7 @@ struct Regs {
 
         inline u32 GetBaseAddress() const {
             // TODO: Ugly, should fix PhysicalToVirtualAddress instead
-            return DecodeAddressRegister(base_address) - Memory::FCRAM_PADDR + Memory::HEAP_GSP_VADDR;
+            return DecodeAddressRegister(base_address) - Memory::FCRAM_PADDR + Memory::HEAP_LINEAR_VADDR;
         }
 
         // Descriptor for internal vertex attributes
