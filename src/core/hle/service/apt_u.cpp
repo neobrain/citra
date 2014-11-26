@@ -4,10 +4,12 @@
 
 
 #include "common/common.h"
+#include "common/file_util.h"
 
 #include "core/hle/hle.h"
 #include "core/hle/kernel/event.h"
 #include "core/hle/kernel/mutex.h"
+#include "core/hle/kernel/shared_memory.h"
 #include "apt_u.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -15,7 +17,14 @@
 
 namespace APT_U {
 
+// Address used for shared font (observed on HW by 3dmoo team)
+static const VAddr SHARED_FONT_ADDR = 0x18000000;
+
+// Handle to shared memory region designated to for shared system font
+Handle shared_font_mem = 0;
+
 static Handle lock_handle = 0;
+static std::vector<u8> shared_font;
 
 /// Signals used by APT functions
 enum class SignalType : u32 {
@@ -84,18 +93,18 @@ void InquireNotification(Service::Interface* self) {
  * state so that this command will return an error if this command is used again if parameters were
  * not set again. This is called when the second Initialize event is triggered. It returns a signal
  * type indicating why it was triggered.
- * Inputs:
- * 1 : AppID
- * 2 : Parameter buffer size, max size is 0x1000
- * Outputs:
- * 1 : Result of function, 0 on success, otherwise error code
- * 2 : Unknown, for now assume AppID of the process which sent these parameters
- * 3 : Unknown, for now assume Signal type
- * 4 : Actual parameter buffer size, this is <= to the the input size
- * 5 : Value
- * 6 : Handle from the source process which set the parameters, likely used for shared memory
- * 7 : Size
- * 8 : Output parameter buffer ptr
+ *  Inputs:
+ *      1 : AppID
+ *      2 : Parameter buffer size, max size is 0x1000
+ *  Outputs:
+ *      1 : Result of function, 0 on success, otherwise error code
+ *      2 : Unknown, for now assume AppID of the process which sent these parameters
+ *      3 : Unknown, for now assume Signal type
+ *      4 : Actual parameter buffer size, this is <= to the the input size
+ *      5 : Value
+ *      6 : Handle from the source process which set the parameters, likely used for shared memory
+ *      7 : Size
+ *      8 : Output parameter buffer ptr
  */
 void ReceiveParameter(Service::Interface* self) {
     u32* cmd_buff = Service::GetCommandBuffer();
@@ -115,18 +124,18 @@ void ReceiveParameter(Service::Interface* self) {
  * APT_U::GlanceParameter service function. This is exactly the same as APT_U::ReceiveParameter
  * (except for the word value prior to the output handle), except this will not clear the flag
  * (except when responseword[3]==8 || responseword[3]==9) in NS state.
- * Inputs:
- * 1 : AppID
- * 2 : Parameter buffer size, max size is 0x1000
- * Outputs:
- * 1 : Result of function, 0 on success, otherwise error code
- * 2 : Unknown, for now assume AppID of the process which sent these parameters
- * 3 : Unknown, for now assume Signal type
- * 4 : Actual parameter buffer size, this is <= to the the input size
- * 5 : Value
- * 6 : Handle from the source process which set the parameters, likely used for shared memory
- * 7 : Size
- * 8 : Output parameter buffer ptr
+ *  Inputs:
+ *      1 : AppID
+ *      2 : Parameter buffer size, max size is 0x1000
+ *  Outputs:
+ *      1 : Result of function, 0 on success, otherwise error code
+ *      2 : Unknown, for now assume AppID of the process which sent these parameters
+ *      3 : Unknown, for now assume Signal type
+ *      4 : Actual parameter buffer size, this is <= to the the input size
+ *      5 : Value
+ *      6 : Handle from the source process which set the parameters, likely used for shared memory
+ *      7 : Size
+ *      8 : Output parameter buffer ptr
  */
 void GlanceParameter(Service::Interface* self) {
     u32* cmd_buff = Service::GetCommandBuffer();
@@ -146,14 +155,14 @@ void GlanceParameter(Service::Interface* self) {
 
 /**
  * APT_U::AppletUtility service function
- * Inputs:
- * 1 : Unknown, but clearly used for something
- * 2 : Buffer 1 size (purpose is unknown)
- * 3 : Buffer 2 size (purpose is unknown)
- * 5 : Buffer 1 address (purpose is unknown)
- * 65 : Buffer 2 address (purpose is unknown)
- * Outputs:
- * 1 : Result of function, 0 on success, otherwise error code
+ *  Inputs:
+ *      1 : Unknown, but clearly used for something
+ *      2 : Buffer 1 size (purpose is unknown)
+ *      3 : Buffer 2 size (purpose is unknown)
+ *      5 : Buffer 1 address (purpose is unknown)
+ *      65 : Buffer 2 address (purpose is unknown)
+ *  Outputs:
+ *      1 : Result of function, 0 on success, otherwise error code
  */
 void AppletUtility(Service::Interface* self) {
     u32* cmd_buff = Service::GetCommandBuffer();
@@ -170,6 +179,29 @@ void AppletUtility(Service::Interface* self) {
     WARN_LOG(KERNEL, "(STUBBED) called unk=0x%08X, buffer1_size=0x%08x, buffer2_size=0x%08x, "
              "buffer1_addr=0x%08x, buffer2_addr=0x%08x", unk, buffer1_size, buffer2_size,
              buffer1_addr, buffer2_addr);
+}
+
+/**
+ * APT_U::GetSharedFont service function
+ *  Outputs:
+ *      1 : Result of function, 0 on success, otherwise error code
+ *      2 : Virtual address of where shared font will be loaded in memory
+ *      4 : Handle to shared font memory
+ */
+void GetSharedFont(Service::Interface* self) {
+    NOTICE_LOG(KERNEL, "called");
+
+    u32* cmd_buff = Service::GetCommandBuffer();
+
+    if (!shared_font.empty()) {
+        cmd_buff[0] = 0x00440082;
+        cmd_buff[1] = 0; // No error
+        cmd_buff[2] = SHARED_FONT_ADDR;
+    } else {
+        cmd_buff[1] = -1; // Generic error (not really possible to verify this on hardware)
+        ERROR_LOG(KERNEL, "called, but %s has not been loaded!", SHARED_FONT);
+    }
+    cmd_buff[4] = shared_font_mem;
 }
 
 const Interface::FunctionInfo FunctionTable[] = {
@@ -240,7 +272,7 @@ const Interface::FunctionInfo FunctionTable[] = {
     {0x00410040, nullptr,               "ReceiveCaptureBufferInfo"},
     {0x00420080, nullptr,               "SleepSystem"},
     {0x00430040, nullptr,               "NotifyToWait"},
-    {0x00440000, nullptr,               "GetSharedFont"},
+    {0x00440000, GetSharedFont,         "GetSharedFont"},
     {0x00450040, nullptr,               "GetWirelessRebootInfo"},
     {0x00460104, nullptr,               "Wrap"},
     {0x00470104, nullptr,               "Unwrap"},
@@ -259,9 +291,30 @@ const Interface::FunctionInfo FunctionTable[] = {
 // Interface class
 
 Interface::Interface() {
-    Register(FunctionTable, ARRAY_SIZE(FunctionTable));
+
+    // Load the shared system font (if available)
+    // Expected format is a decrypted, uncompressed bcfnt file with the with the 0x80 byte header
+    // generated by the APT:U service. The best way to get is by dumping it from RAM.
+
+    shared_font.clear();
+    std::string filename = FileUtil::GetSysDirectory() + SHARED_FONT;
+    FileUtil::IOFile file(filename, "rb");
+
+    if (file.IsOpen()) {
+        // Read shared font data
+        shared_font.resize(file.GetSize());
+        file.ReadBytes(&shared_font[0], file.GetSize());
+
+        // Create shared font memory object
+        shared_font_mem = Kernel::CreateSharedMemory("APT_U:shared_font_mem");
+    } else {
+        WARN_LOG(KERNEL, "Unable to load shared font: %s", filename.c_str());
+        shared_font_mem = 0;
+    }
 
     lock_handle = 0;
+
+    Register(FunctionTable, ARRAY_SIZE(FunctionTable));
 }
 
 Interface::~Interface() {
