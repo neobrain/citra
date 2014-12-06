@@ -178,7 +178,7 @@ void ProcessTriangle(const VertexShader::OutputVertex& v0,
             Math::Vec4<u8> texture_color[3]{};
             for (int i = 0; i < 3; ++i) {
                 auto texture = registers.GetTextures()[i];
-                if (texture.enabled)
+                if (!texture.enabled)
                     continue;
 
                 _dbg_assert_(GPU, 0 != texture.config.address);
