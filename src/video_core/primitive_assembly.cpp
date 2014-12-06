@@ -30,15 +30,24 @@ void PrimitiveAssembler<VertexType>::SubmitVertex(VertexType& vtx, TriangleHandl
             }
             break;
 
+        case Regs::TriangleTopology::Strip:
         case Regs::TriangleTopology::Fan:
-            if (buffer_index == 2) {
-                buffer_index = 0;
+            if (strip_ready) {
+                // TODO: Should be "buffer[0], buffer[1], vtx" instead!
+                // Not quite sure why we need this order for things to show up properly.
+                // Maybe a bug in the rasterizer?
+                ERROR_LOG(GPU, "Calling triangle handler!");
+                triangle_handler(buffer[1], buffer[0], vtx);
+            }
+            buffer[buffer_index] = vtx;
 
-                triangle_handler(buffer[0], buffer[1], vtx);
-
-                buffer[1] = vtx;
-            } else {
-                buffer[buffer_index++] = vtx;
+            if (topology == Regs::TriangleTopology::Strip) {
+                ERROR_LOG(GPU, "Submitting to index %d, strip was %d", buffer_index, (int)strip_ready);
+                strip_ready |= (buffer_index == 1);
+                buffer_index = !buffer_index;
+            } else if (topology == Regs::TriangleTopology::Fan) {
+                buffer_index = 1;
+                strip_ready = true;
             }
             break;
 
