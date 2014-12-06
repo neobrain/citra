@@ -133,6 +133,8 @@ struct Regs {
         RGB565       =  3,
         RGBA4        =  4,
 
+        A8           =  8,
+
         // TODO: Support for the other formats is not implemented, yet.
         // Seems like they are luminance formats and compressed textures.
     };
