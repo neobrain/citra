@@ -194,6 +194,9 @@ void GetSharedFont(Service::Interface* self) {
     u32* cmd_buff = Service::GetCommandBuffer();
 
     if (!shared_font.empty()) {
+
+        memcpy(Memory::GetPointer(SHARED_FONT_ADDR), &shared_font[0], shared_font.size());
+
         cmd_buff[0] = 0x00440082;
         cmd_buff[1] = 0; // No error
         cmd_buff[2] = SHARED_FONT_ADDR;
