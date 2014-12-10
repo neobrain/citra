@@ -44,6 +44,7 @@ QVariant BreakPointModel::data(const QModelIndex& index, int role) const
             map.insert({Pica::DebugContext::Event::CommandProcessed, tr("Pica command processed")});
             map.insert({Pica::DebugContext::Event::IncomingPrimitiveBatch, tr("Incoming primitive batch")});
             map.insert({Pica::DebugContext::Event::FinishedPrimitiveBatch, tr("Finished primitive batch")});
+            map.insert({Pica::DebugContext::Event::VertexLoaded, tr("Vertex loaded")});
 
             _dbg_assert_(GUI, map.size() == static_cast<size_t>(Pica::DebugContext::Event::NumEvents));
 
