@@ -19,8 +19,8 @@ static struct {
 
 // TODO: Not sure where the shader binary and swizzle patterns are supposed to be loaded to!
 // For now, we just keep these local arrays around.
-static u32 shader_memory[1024];
-static u32 swizzle_data[1024];
+static std::array<u32, 1024> shader_memory;
+static std::array<u32, 1024> swizzle_data;
 
 void SubmitShaderMemoryChange(u32 addr, u32 value)
 {
@@ -36,6 +36,17 @@ Math::Vec4<float24>& GetFloatUniform(u32 index)
 {
     return shader_uniforms.f[index];
 }
+
+const std::array<u32, 1024>& GetShaderBinary()
+{
+    return shader_memory;
+}
+
+const std::array<u32, 1024>& GetSwizzlePatterns()
+{
+    return swizzle_data;
+}
+
 
 struct VertexShaderState {
     u32* program_counter;
@@ -63,7 +74,7 @@ static void ProcessShaderCode(VertexShaderState& state) {
         bool increment_pc = true;
         bool exit_loop = false;
         const Instruction& instr = *(const Instruction*)state.program_counter;
-        state.debug.max_offset = std::max<u32>(state.debug.max_offset, 1 + (state.program_counter - shader_memory));
+        state.debug.max_offset = std::max<u32>(state.debug.max_offset, 1 + (state.program_counter - shader_memory.data()));
 
         const float24* src1_ = (instr.common.src1 < 0x10) ? state.input_register_table[instr.common.src1.GetIndex()]
                              : (instr.common.src1 < 0x20) ? &state.temporary_registers[instr.common.src1.GetIndex()].x
@@ -203,7 +214,7 @@ static void ProcessShaderCode(VertexShaderState& state) {
 
                 _dbg_assert_(GPU, state.call_stack_pointer - state.call_stack < sizeof(state.call_stack));
 
-                *++state.call_stack_pointer = state.program_counter - shader_memory;
+                *++state.call_stack_pointer = state.program_counter - shader_memory.data();
                 // TODO: Does this offset refer to the beginning of shader memory?
                 state.program_counter = &shader_memory[instr.flow_control.offset_words];
                 break;
@@ -277,7 +288,7 @@ OutputVertex RunShader(const InputVertex& input, int num_attributes)
     state.call_stack_pointer = &state.call_stack[0];
 
     ProcessShaderCode(state);
-    DebugUtils::DumpShader(shader_memory, state.debug.max_offset, swizzle_data,
+    DebugUtils::DumpShader(shader_memory.data(), state.debug.max_offset, swizzle_data.data(),
                            state.debug.max_opdesc_id, registers.vs_main_offset,
                            registers.vs_output_attributes);
 
