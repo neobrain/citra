@@ -30,6 +30,7 @@
 #include "debugger/graphics_breakpoints.hxx"
 #include "debugger/graphics_cmdlists.hxx"
 #include "debugger/graphics_framebuffer.hxx"
+#include "debugger/graphics_vertex_shader.hxx"
 
 #include "core/settings.h"
 #include "core/system.h"
@@ -80,6 +81,10 @@ GMainWindow::GMainWindow()
     addDockWidget(Qt::RightDockWidgetArea, graphicsFramebufferWidget);
     graphicsFramebufferWidget->hide();
 
+    auto graphicsVertexShaderWidget = new GraphicsVertexShaderWidget(Pica::g_debug_context, this);
+    addDockWidget(Qt::RightDockWidgetArea, graphicsVertexShaderWidget);
+    graphicsVertexShaderWidget->hide();
+
     QMenu* debug_menu = ui.menu_View->addMenu(tr("Debugging"));
     debug_menu->addAction(disasmWidget->toggleViewAction());
     debug_menu->addAction(registersWidget->toggleViewAction());
@@ -88,6 +93,7 @@ GMainWindow::GMainWindow()
     debug_menu->addAction(graphicsCommandsWidget->toggleViewAction());
     debug_menu->addAction(graphicsBreakpointsWidget->toggleViewAction());
     debug_menu->addAction(graphicsFramebufferWidget->toggleViewAction());
+    debug_menu->addAction(graphicsVertexShaderWidget->toggleViewAction());
 
     // Set default UI state
     // geometry: 55% of the window contents are in the upper screen half, 45% in the lower half
