@@ -127,7 +127,8 @@ struct Regs {
         u32 address;
 
         u32 GetPhysicalAddress() const {
-            return DecodeAddressRegister(address) - Memory::FCRAM_PADDR + Memory::HEAP_LINEAR_VADDR;
+            return DecodeAddressRegister(address);
+//            return DecodeAddressRegister(address) - Memory::FCRAM_PADDR + Memory::HEAP_LINEAR_VADDR;
         }
 
         // texture1 and texture2 store the texture format directly after the address
@@ -142,29 +143,39 @@ struct Regs {
         RGBA5551     =  2,
         RGB565       =  3,
         RGBA4        =  4,
+        IA8          =  5,
 
+        I8           =  7,
         A8           =  8,
+        IA4          =  9,
 
+        A4           = 11,
         // TODO: Support for the other formats is not implemented, yet.
         // Seems like they are luminance formats and compressed textures.
     };
 
-    static unsigned BytesPerPixel(TextureFormat format) {
+    static unsigned NibblesPerPixel(TextureFormat format) {
         switch (format) {
         case TextureFormat::RGBA8:
-            return 4;
+            return 8;
 
         case TextureFormat::RGB8:
-            return 3;
+            return 6;
 
         case TextureFormat::RGBA5551:
         case TextureFormat::RGB565:
         case TextureFormat::RGBA4:
-            return 2;
+        case TextureFormat::IA8:
+            return 4;
 
-        default:
-            // placeholder for yet unknown formats
+        case TextureFormat::A4:
             return 1;
+
+        case TextureFormat::I8:
+        case TextureFormat::A8:
+        case TextureFormat::IA4:
+        default:  // placeholder for yet unknown formats
+            return 2;
         }
     }
 
@@ -779,7 +790,7 @@ inline static u32 PAddrToVAddr(u32 addr) {
     if (addr >= Memory::VRAM_PADDR && addr < Memory::VRAM_PADDR + Memory::VRAM_SIZE) {
         return addr - Memory::VRAM_PADDR + Memory::VRAM_VADDR;
     } else if (addr >= Memory::FCRAM_PADDR && addr < Memory::FCRAM_PADDR + Memory::FCRAM_SIZE) {
-        return addr - Memory::FCRAM_PADDR + Memory::HEAP_GSP_VADDR;
+        return addr - Memory::FCRAM_PADDR + Memory::HEAP_LINEAR_VADDR;
     } else {
         return 0;
     }

@@ -204,7 +204,7 @@ void ProcessTriangle(const VertexShader::OutputVertex& v0,
                 s = GetWrappedTexCoord(registers.texture0.wrap_s, s, registers.texture0.width);
                 t = GetWrappedTexCoord(registers.texture0.wrap_t, t, registers.texture0.height);
 
-                u8* texture_data = Memory::GetPointer(texture.config.GetPhysicalAddress());
+                u8* texture_data = Memory::GetPointer(Pica::PAddrToVAddr(texture.config.GetPhysicalAddress()));
                 auto info = DebugUtils::TextureInfo::FromPicaRegister(texture.config, texture.format);
 
                 texture_color[i] = DebugUtils::LookupTexture(texture_data, s, t, info);
