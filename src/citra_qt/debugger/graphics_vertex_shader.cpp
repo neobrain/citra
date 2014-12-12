@@ -89,9 +89,21 @@ QVariant GraphicsVertexShaderModel::data(const QModelIndex& index, int role) con
                     src1_relative_address = "[" + instr.common.AddressRegisterName() + "]";
 
                 SourceRegister src1 = instr.common.GetSrc1(src_is_inverted);
-                output << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  "
-                       << std::setw(8) << std::right << ((swizzle.negate_src1 ? "-" : "") + src1.GetName()) + src1_relative_address << "." << swizzle.SelectorToString(false) << "  ";
+                if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Dest) {
+                    output << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  ";
+                } else if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::MOVA) {
+                    output << std::setw(4) << std::right << "a0." << swizzle.DestMaskToString() << "  ";
+                } else {
+                    output << "    ";
+                }
 
+                if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src1) {
+                    output << std::setw(8) << std::right << ((swizzle.negate_src1 ? "-" : "") + src1.GetName()) + src1_relative_address << "." << swizzle.SelectorToString(false) << "  ";
+                } else {
+                    output << "        ";
+                }
+
+                // TODO: In some cases, the Address Register is used as an index for SRC2 instead of SRC1
                 if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2) {
                     SourceRegister src2 = instr.common.GetSrc2(src_is_inverted);
                     output << std::setw(4) << std::right << (swizzle.negate_src2 ? "-" : "") + src2.GetName() << "." << swizzle.SelectorToString(true) << "   ";
