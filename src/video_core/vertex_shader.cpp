@@ -2,11 +2,15 @@
 // Licensed under GPLv2
 // Refer to the license.txt file included.
 
+#include <common/file_util.h>
+
+#include <core/mem_map.h>
+
+#include <nihstro/shader_bytecode.h>
+
 #include "pica.h"
 #include "vertex_shader.h"
 #include "debug_utils/debug_utils.h"
-#include <core/mem_map.h>
-#include <common/file_util.h>
 
 namespace Pica {
 
@@ -88,7 +92,8 @@ static void ProcessShaderCode(VertexShaderState& state) {
                       : nullptr;
 
         const SwizzlePattern& swizzle = *(SwizzlePattern*)&swizzle_data[instr.common.operand_desc_id];
-        const bool negate_src1 = (swizzle.negate != 0);
+        const bool negate_src1 = (swizzle.negate_src1 != 0);
+        const bool negate_src2 = (swizzle.negate_src2 != 0);
 
         float24 src1[4] = {
             src1_[(int)swizzle.GetSelectorSrc1(0)],
@@ -102,12 +107,18 @@ static void ProcessShaderCode(VertexShaderState& state) {
             src1[2] = src1[2] * float24::FromFloat32(-1);
             src1[3] = src1[3] * float24::FromFloat32(-1);
         }
-        const float24 src2[4] = {
+        float24 src2[4] = {
             src2_[(int)swizzle.GetSelectorSrc2(0)],
             src2_[(int)swizzle.GetSelectorSrc2(1)],
             src2_[(int)swizzle.GetSelectorSrc2(2)],
             src2_[(int)swizzle.GetSelectorSrc2(3)],
         };
+        if (negate_src2) {
+            src2[0] = src2[0] * float24::FromFloat32(-1);
+            src2[1] = src2[1] * float24::FromFloat32(-1);
+            src2[2] = src2[2] * float24::FromFloat32(-1);
+            src2[3] = src2[3] * float24::FromFloat32(-1);
+        }
 
         switch (instr.opcode) {
             case Instruction::OpCode::ADD:
@@ -198,7 +209,7 @@ static void ProcessShaderCode(VertexShaderState& state) {
                 break;
             }
 
-            case Instruction::OpCode::RET:
+            case Instruction::OpCode::END:
                 if (*state.call_stack_pointer == VertexShaderState::INVALID_ADDRESS) {
                     exit_loop = true;
                 } else {
@@ -219,13 +230,12 @@ static void ProcessShaderCode(VertexShaderState& state) {
                 state.program_counter = &shader_memory[instr.flow_control.offset_words];
                 break;
 
-            case Instruction::OpCode::FLS:
-                // TODO: Do whatever needs to be done here?
+            case Instruction::OpCode::NOP:
                 break;
 
             default:
                 ERROR_LOG(GPU, "Unhandled instruction: 0x%02x (%s): 0x%08x",
-                          (int)instr.opcode.Value(), instr.GetOpCodeName().c_str(), instr.hex);
+                          (int)instr.opcode.Value(), instr.opcode.GetInfo().name.c_str(), instr.hex);
                 break;
         }
 
