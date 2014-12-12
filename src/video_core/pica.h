@@ -771,6 +771,17 @@ struct float24 {
         return ToFloat32() <= flt.ToFloat32();
     }
 
+    bool operator == (const float24& flt) const {
+        // TODO: Implement this less lazily
+        return *this >= flt &&
+               *this <= flt;
+    }
+
+    bool operator != (const float24& flt) const {
+        // TODO: Implement this less lazily
+        return !(*this == flt);
+    }
+
 private:
     // Stored as a regular float, merely for convenience
     // TODO: Perform proper arithmetic on this!

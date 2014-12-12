@@ -59,6 +59,8 @@ const std::array<u32, 1024>& GetSwizzlePatterns()
     return swizzle_data;
 }
 
+// TODO: Is there actually a limit on hardware?
+const int if_stack_size = 8;
 
 struct VertexShaderState {
     u32* program_counter;
@@ -67,13 +69,23 @@ struct VertexShaderState {
     float24* output_register_table[7*4];
 
     Math::Vec4<float24> temporary_registers[16];
-    bool status_registers[2];
+    bool conditional_code[2];
+
+    // Two Address registers and one loop counter
+    // TODO: Which bitness do these have?
+    int address_registers[3];
 
     enum {
         INVALID_ADDRESS = 0xFFFFFFFF
     };
     u32 call_stack[8]; // TODO: What is the maximal call stack depth?
     u32* call_stack_pointer;
+
+    struct IfStackElement {
+        u32 else_addr;
+        u32 else_instructions;
+    } if_stack[if_stack_size];
+    IfStackElement* if_stack_pointer;
 
     struct {
         u32 max_offset; // maximum program counter ever reached
@@ -107,7 +119,16 @@ static void ProcessShaderCode(VertexShaderState& state) {
         case Instruction::OpCodeType::Arithmetic:
         {
             bool is_inverted = 0 != (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::SrcInversed);
-            const float24* src1_ = LookupSourceRegister(instr.common.GetSrc1(is_inverted));
+            if (is_inverted) {
+                // We don't really support this properly and/or reliably
+                LOG_ERROR(HW_GPU, "Bad condition...");
+                exit(0);
+            }
+
+            const int address_offset = (instr.common.address_register_index == 0)
+                                       ? 0 : state.address_registers[instr.common.address_register_index - 1];
+
+            const float24* src1_ = LookupSourceRegister(instr.common.GetSrc1(is_inverted) + address_offset);
             const float24* src2_ = LookupSourceRegister(instr.common.GetSrc2(is_inverted));
 
             const bool negate_src1 = (swizzle.negate_src1 != 0);
@@ -217,6 +238,19 @@ static void ProcessShaderCode(VertexShaderState& state) {
                 break;
             }
 
+            case Instruction::OpCode::MOVA:
+            {
+                for (int i = 0; i < 2; ++i) {
+                    if (!swizzle.DestComponentEnabled(i))
+                        continue;
+
+                    // TODO: Figure out how the rounding is done on hardware
+                    state.address_registers[i] = (int)src1[i].ToFloat32();
+                }
+
+                break;
+            }
+
             case Instruction::OpCode::MOV:
             {
                 for (int i = 0; i < 4; ++i) {
@@ -228,51 +262,137 @@ static void ProcessShaderCode(VertexShaderState& state) {
                 break;
             }
 
+            case Instruction::OpCode::CMP:
+                for (int i = 0; i < 2; ++i) {
+                    // TODO: Can you restrict to one compare via dest masking?
+
+                    auto compare_op = instr.common.compare_op;
+                    using Op = decltype(compare_op);
+                    auto op = (i == 0) ? compare_op.x.Value() : compare_op.y.Value();
+
+                    switch (op) {
+                        case Op::Equal:
+                            state.conditional_code[i] = (src1[i] == src2[i]);
+                            break;
+
+                        case Op::NotEqual:
+                            state.conditional_code[i] = (src1[i] != src2[i]);
+                            break;
+
+                        case Op::LessThan:
+                            state.conditional_code[i] = (src1[i] <  src2[i]);
+                            break;
+
+                        case Op::LessEqual:
+                            state.conditional_code[i] = (src1[i] <= src2[i]);
+                            break;
+
+                        case Op::GreaterThan:
+                            state.conditional_code[i] = (src1[i] >  src2[i]);
+                            break;
+
+                        case Op::GreaterEqual:
+                            state.conditional_code[i] = (src1[i] >= src2[i]);
+                            break;
+
+                        default:
+                            LOG_ERROR(HW_GPU, "Unknown compare mode %x", static_cast<int>(op));
+                            break;
+                    }
+                }
+                break;
+
             default:
                 LOG_ERROR(HW_GPU, "Unhandled arithmetic instruction: 0x%02x (%s): 0x%08x",
                           (int)instr.opcode.Value(), instr.opcode.GetInfo().name.c_str(), instr.hex);
+                _dbg_assert_(HW_GPU, 0);
                 break;
             }
 
             break;
         }
         default:
-            // Process instruction explicitly below
-            break;
-        }
+            // Handle each instruction on its own
+            switch (instr.opcode) {
+            case Instruction::OpCode::END:
+                if (*state.call_stack_pointer == VertexShaderState::INVALID_ADDRESS) {
+                    exit_loop = true;
+                } else {
+                    // Jump back to call stack position, invalidate call stack entry, move up call stack pointer
+                    state.program_counter = &shader_memory[*state.call_stack_pointer];
+                    *state.call_stack_pointer-- = VertexShaderState::INVALID_ADDRESS;
+                }
 
-        switch (instr.opcode) {
-        case Instruction::OpCode::END:
-            if (*state.call_stack_pointer == VertexShaderState::INVALID_ADDRESS) {
-                exit_loop = true;
-            } else {
-                // Jump back to call stack position, invalidate call stack entry, move up call stack pointer
-                state.program_counter = &shader_memory[*state.call_stack_pointer];
-                *state.call_stack_pointer-- = VertexShaderState::INVALID_ADDRESS;
+                break;
+
+            case Instruction::OpCode::CALL:
+                increment_pc = false;
+
+                _dbg_assert_(HW_GPU, state.call_stack_pointer - state.call_stack < sizeof(state.call_stack));
+
+                *++state.call_stack_pointer = state.program_counter - shader_memory.data();
+                state.program_counter = &shader_memory[instr.flow_control.dest_offset];
+                break;
+
+            case Instruction::OpCode::NOP:
+                break;
+
+            case Instruction::OpCode::IFC:
+            {
+                // TODO: Do we need to consider swizzlers here?
+
+                bool results[3] = { instr.flow_control.refx == state.conditional_code[0],
+                                    instr.flow_control.refy == state.conditional_code[1] };
+
+                using Op = decltype(instr.flow_control);
+                switch (instr.flow_control.op) {
+                case Op::Or:
+                    results[2] = results[0] || results[1];
+                    break;
+
+                case Op::And:
+                    results[2] = results[0] && results[1];
+                    break;
+
+                case Op::JustX:
+                    results[2] = results[0];
+                    break;
+
+                case Op::JustY:
+                    results[2] = results[1];
+                    break;
+                }
+
+                if (results[2]) {
+                    ++state.if_stack_pointer;
+
+                    state.if_stack_pointer->else_addr = instr.flow_control.dest_offset;
+                    state.if_stack_pointer->else_instructions = instr.flow_control.num_instructions;
+                } else {
+                    state.program_counter = &shader_memory[instr.flow_control.dest_offset] - 1;
+                }
+
+                break;
             }
 
-            break;
+            default:
+                LOG_ERROR(HW_GPU, "Unhandled instruction: 0x%02x (%s): 0x%08x",
+                          (int)instr.opcode.Value(), instr.opcode.GetInfo().name.c_str(), instr.hex);
+                break;
+            }
 
-        case Instruction::OpCode::CALL:
-            increment_pc = false;
-
-            _dbg_assert_(HW_GPU, state.call_stack_pointer - state.call_stack < sizeof(state.call_stack));
-
-            *++state.call_stack_pointer = state.program_counter - shader_memory.data();
-            state.program_counter = &shader_memory[instr.flow_control.dest_offset];
-            break;
-
-        case Instruction::OpCode::NOP:
-            break;
-
-        default:
-            LOG_ERROR(HW_GPU, "Unhandled instruction: 0x%02x (%s): 0x%08x",
-                      (int)instr.opcode.Value(), instr.opcode.GetInfo().name.c_str(), instr.hex);
             break;
         }
 
         if (increment_pc)
             ++state.program_counter;
+
+        if (state.if_stack_pointer >= &state.if_stack[0]) {
+            if (state.program_counter - shader_memory.data() == state.if_stack_pointer->else_addr) {
+                state.program_counter += state.if_stack_pointer->else_instructions;
+                state.if_stack_pointer--;
+            }
+        }
 
         if (exit_loop)
             break;
@@ -323,10 +443,14 @@ OutputVertex RunShader(const InputVertex& input, int num_attributes)
             state.output_register_table[4*i+comp] = ((float24*)&ret) + semantics[comp];
     }
 
-    state.status_registers[0] = false;
-    state.status_registers[1] = false;
+    state.conditional_code[0] = false;
+    state.conditional_code[1] = false;
     boost::fill(state.call_stack, VertexShaderState::INVALID_ADDRESS);
     state.call_stack_pointer = &state.call_stack[0];
+
+    std::fill(state.if_stack, state.if_stack + sizeof(state.if_stack) / sizeof(state.if_stack[0]),
+              VertexShaderState::IfStackElement{VertexShaderState::INVALID_ADDRESS, VertexShaderState::INVALID_ADDRESS});
+    state.if_stack_pointer = state.if_stack - 1; // Meh. TODO: Make this less ugly
 
     ProcessShaderCode(state);
     DebugUtils::DumpShader(shader_memory.data(), state.debug.max_offset, swizzle_data.data(),
