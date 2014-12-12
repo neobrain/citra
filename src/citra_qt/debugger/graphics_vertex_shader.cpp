@@ -78,15 +78,20 @@ QVariant GraphicsVertexShaderModel::data(const QModelIndex& index, int role) con
             output << instr.opcode.GetInfo().name;
 
             if (instr.opcode.GetInfo().type == Instruction::OpCodeType::Arithmetic) {
+                bool src_is_inverted = 0 != (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::SrcInversed);
+
                 std::string src1_relative_address;
                 if (!instr.common.AddressRegisterName().empty())
                     src1_relative_address = "[" + instr.common.AddressRegisterName() + "]";
 
+                SourceRegister src1 = instr.common.GetSrc1(src_is_inverted);
                 output << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  "
-                    << std::setw(8) << std::right << ((swizzle.negate_src1 ? "-" : "") + instr.common.src1.GetName()) + src1_relative_address << "." << swizzle.SelectorToString(false) << "  ";
+                       << std::setw(8) << std::right << ((swizzle.negate_src1 ? "-" : "") + src1.GetName()) + src1_relative_address << "." << swizzle.SelectorToString(false) << "  ";
 
-                if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2)
-                    output << std::setw(4) << std::right << (swizzle.negate_src2 ? "-" : "") + instr.common.src2.GetName() << "." << swizzle.SelectorToString(true) << "   ";
+                if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2) {
+                    SourceRegister src2 = instr.common.GetSrc2(src_is_inverted);
+                    output << std::setw(4) << std::right << (swizzle.negate_src2 ? "-" : "") + src2.GetName() << "." << swizzle.SelectorToString(true) << "   ";
+                }
             } else if (instr.opcode.GetInfo().type == Instruction::OpCodeType::Conditional) {
                 // TODO
             }
