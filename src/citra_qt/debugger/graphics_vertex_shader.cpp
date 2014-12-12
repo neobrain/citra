@@ -64,7 +64,10 @@ QVariant GraphicsVertexShaderModel::data(const QModelIndex& index, int role) con
     {
         switch (index.column()) {
         case 0:
-            return QString("%1").arg(4*index.row(), 8, 16, QLatin1Char('0'));
+            if (info.HasLabel(index.row()))
+                return QString::fromStdString(info.GetLabel(index.row()));
+
+            return QString("%1").arg(4*index.row(), 4, 16, QLatin1Char('0'));
 
         case 1:
             return QString("%1").arg(info.code[index.row()].hex, 8, 16, QLatin1Char('0'));
@@ -127,11 +130,7 @@ void GraphicsVertexShaderModel::OnUpdate()
     for (auto pattern : Pica::VertexShader::GetSwizzlePatterns())
         info.swizzle_info.push_back({pattern});
 
-    nihstro::LabelInfo main_label;
-    main_label.id = 0;
-    main_label.program_offset = Pica::registers.vs_main_offset;
-    info.labels.insert({0, "main"});
-    info.label_table.push_back(main_label);
+    info.labels.insert({Pica::registers.vs_main_offset, "main"});
 
     endResetModel();
 }
