@@ -371,8 +371,8 @@ static void ProcessShaderCode(VertexShaderState& state) {
             {
                 // TODO: Do we need to consider swizzlers here?
 
-                bool results[3] = { instr.flow_control.negx != state.conditional_code[0],
-                                    instr.flow_control.negy != state.conditional_code[1] };
+                bool results[3] = { instr.flow_control.refx == state.conditional_code[0],
+                                    instr.flow_control.refy == state.conditional_code[1] };
 
                 using Op = decltype(instr.flow_control);
                 switch (instr.flow_control.op) {
