@@ -55,7 +55,6 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
             if (g_debug_context)
                 g_debug_context->OnEvent(DebugContext::Event::IncomingPrimitiveBatch, nullptr);
 
-            break;
             const auto& attribute_config = registers.vertex_attributes;
             const u32 base_address = attribute_config.base_address * 8;
 
