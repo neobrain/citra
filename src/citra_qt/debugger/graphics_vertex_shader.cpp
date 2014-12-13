@@ -15,6 +15,11 @@
 
 #include "graphics_vertex_shader.hxx"
 
+using nihstro::Instruction;
+using nihstro::ShaderInfo;
+using nihstro::SourceRegister;
+using nihstro::SwizzlePattern;
+
 GraphicsVertexShaderModel::GraphicsVertexShaderModel(QObject* parent): QAbstractItemModel(parent) {
 
 }

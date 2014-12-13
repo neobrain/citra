@@ -27,7 +27,7 @@ public slots:
     void OnUpdate();
 
 private:
-    ShaderInfo info;
+    nihstro::ShaderInfo info;
 };
 
 class GraphicsVertexShaderWidget : public BreakPointObserverDock {

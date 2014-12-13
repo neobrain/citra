@@ -16,6 +16,11 @@
 #include "vertex_shader.h"
 #include "debug_utils/debug_utils.h"
 
+using nihstro::Instruction;
+using nihstro::RegisterType;
+using nihstro::SourceRegister;
+using nihstro::SwizzlePattern;
+
 namespace Pica {
 
 namespace VertexShader {
