@@ -170,6 +170,7 @@ void ProcessTriangle(OutputVertex &v0, OutputVertex &v1, OutputVertex &v2) {
                   vtx2.screenpos.x.ToFloat32(), vtx2.screenpos.y.ToFloat32(), vtx2.screenpos.z.ToFloat32());
 
         Rasterizer::ProcessTriangle(vtx0, vtx1, vtx2);
+        Rasterizer::ProcessTriangle(vtx2, vtx1, vtx0);
     }
 }
 
