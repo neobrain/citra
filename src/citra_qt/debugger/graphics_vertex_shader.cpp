@@ -75,6 +75,7 @@ QVariant GraphicsVertexShaderModel::data(const QModelIndex& index, int role) con
         case 2:
         {
             std::stringstream output;
+            output.flags(std::ios::hex);
 
             Instruction instr = info.code[index.row()];
             const SwizzlePattern& swizzle = info.swizzle_info[instr.common.operand_desc_id].pattern;
@@ -114,7 +115,31 @@ QVariant GraphicsVertexShaderModel::data(const QModelIndex& index, int role) con
                     output << std::setw(4) << std::right << (swizzle.negate_src2 ? "-" : "") + src2.GetName() << "." << swizzle.SelectorToString(true) << "   ";
                 }
             } else if (instr.opcode.GetInfo().type == Instruction::OpCodeType::Conditional) {
-                // TODO
+                bool has_neg_x = instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::NegX;
+                bool has_neg_y = instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::NegY;
+                const char* ops[] = {
+                    " || ", " && ", "", ""
+                };
+                bool show_x = instr.flow_control.op != instr.flow_control.JustY;
+                bool show_y = instr.flow_control.op != instr.flow_control.JustX;
+                if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::JustCondition) {
+                    if (show_x)
+                        output << ((has_neg_x && !instr.flow_control.refx) ? "!" : " ") << "cc.x";
+                    output << ops[instr.flow_control.op];
+                    if (show_y)
+                        output << ((has_neg_y && !instr.flow_control.refy) ? "!" : " ") << "cc.y";
+
+                    output << "  ";
+                }
+
+                if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Dst) {
+                    output << "to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.dest_offset << "\"";
+                }
+
+                if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Num) {
+                    // TODO: This is actually "Up till exclusively"
+                    output << " to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.dest_offset + 4 * instr.flow_control.num_instructions + 4 << "\"";
+                }
             }
 
             return QString::fromLatin1(output.str().c_str());
