@@ -139,6 +139,7 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
                                                                    &geometry_dumper, _1, _2, _3));
 
                 // Send to vertex shader
+                input.attr[0].w = float24::FromFloat32(1.0);
                 VertexShader::OutputVertex output = VertexShader::RunShader(input, attribute_config.GetNumTotalAttributes());
 
                 if (is_indexed) {
