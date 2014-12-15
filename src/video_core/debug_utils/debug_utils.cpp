@@ -455,7 +455,7 @@ TextureInfo TextureInfo::FromPicaRegister(const Regs::TextureConfig& config,
                                           const Regs::TextureFormat& format)
 {
     TextureInfo info;
-    info.address = config.GetPhysicalAddress();
+    info.address = Pica::PAddrToVAddr(config.GetPhysicalAddress());
     info.width = config.width;
     info.height = config.height;
     info.format = format;
