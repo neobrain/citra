@@ -103,6 +103,11 @@ QVariant GraphicsVertexShaderModel::data(const QModelIndex& index, int role) con
                     output << "        ";
                 }
 
+                // TODO: Display this in a cleaner way...
+                if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::CompareOps) {
+                    output << instr.common.compare_op.ToString(instr.common.compare_op.x) << " " << instr.common.compare_op.ToString(instr.common.compare_op.y) << " ";
+                }
+
                 // TODO: In some cases, the Address Register is used as an index for SRC2 instead of SRC1
                 if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2) {
                     SourceRegister src2 = instr.common.GetSrc2(src_is_inverted);
