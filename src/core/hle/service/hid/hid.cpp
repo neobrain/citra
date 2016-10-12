@@ -127,8 +127,8 @@ void Update() {
     }
 
     // Signal both handles when there's an update to Pad or touch
-    event_pad_or_touch_1->Signal();
-    event_pad_or_touch_2->Signal();
+//    event_pad_or_touch_1->Signal();
+//    event_pad_or_touch_2->Signal();
 
     // Update accelerometer
     if (enable_accelerometer_count > 0) {
@@ -158,7 +158,7 @@ void Update() {
             mem->accelerometer.index_reset_ticks = (s64)CoreTiming::GetTicks();
         }
 
-        event_accelerometer->Signal();
+//        event_accelerometer->Signal();
     }
 
     // Update gyroscope
@@ -181,7 +181,7 @@ void Update() {
             mem->gyroscope.index_reset_ticks = (s64)CoreTiming::GetTicks();
         }
 
-        event_gyroscope->Signal();
+//        event_gyroscope->Signal();
     }
 }
 

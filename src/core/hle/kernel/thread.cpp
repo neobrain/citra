@@ -246,8 +246,8 @@ static void SwitchContext(Thread* new_thread) {
 
     // Load context of new thread
     if (new_thread) {
-        DEBUG_ASSERT_MSG(new_thread->status == THREADSTATUS_READY,
-                         "Thread must be ready to become running.");
+//        DEBUG_ASSERT_MSG(new_thread->status == THREADSTATUS_READY,
+//                         "Thread must be ready to become running.");
 
         // Cancel any outstanding wakeup events for this thread
         CoreTiming::UnscheduleEvent(ThreadWakeupEventType, new_thread->callback_handle);
